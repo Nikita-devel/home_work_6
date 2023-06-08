@@ -1,83 +1,98 @@
 import os
-import shutil
 import sys
+import shutil
 
-def normalize(filename):
-    translit_table = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'h', 'ґ': 'g', 'д': 'd', 'е': 'e', 'є': 'ie',
-        'ж': 'zh', 'з': 'z', 'и': 'y', 'і': 'i', 'ї': 'i', 'й': 'i', 'к': 'k', 'л': 'l',
-        'м': 'm', 'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
-        'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ю': 'iu',
-        'я': 'ia',
-        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'H', 'Ґ': 'G', 'Д': 'D', 'Е': 'E', 'Є': 'Ye',
-        'Ж': 'Zh', 'З': 'Z', 'И': 'Y', 'І': 'I', 'Ї': 'Yi', 'Й': 'Y', 'К': 'K', 'Л': 'L',
-        'М': 'M', 'Н': 'N', 'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U',
-        'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ю': 'Yu',
-        'Я': 'Ya'
-    }
+CATEGORIES = {
+    'IMAGE': ['jpeg', 'png', 'jpg', 'svg'],
+    'VIDEO': ['avt', 'mp4', 'mov', 'mkv'],
+    'DOCS': ['doc', 'docx', 'txt', 'pdf', 'xlsx', 'pptx', 'rtf'],
+    'MUSIC': ['mp3', 'ogg', 'wav', 'amr'],
+    'ARCHIVE': ['zip', 'gz', 'tar', '7z'],
+    'OTHER': []
+}
+IGNORE = ['.DS_Store']
 
-    result = ''
-    for char in filename:
-        if char.isalnum():
-            result += char
-        elif char in translit_table:
-            result += translit_table[char]
-        else:
-            result += '_'
-    return result
+TRANSLATE_DICT = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'i', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+    'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h',
+    'ц': 'c', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e',
+    'ю': 'u', 'я': 'ya', 'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'YO',
+    'Ж': 'ZH', 'З': 'Z', 'И': 'I', 'Й': 'I', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N',
+    'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H',
+    'Ц': 'C', 'Ч': 'CH', 'Ш': 'SH', 'Щ': 'SCH', 'Ъ': '', 'Ы': 'y', 'Ь': '', 'Э': 'E',
+    'Ю': 'U', 'Я': 'YA', 'ґ': '', 'ї': '', 'є': '', 'Ґ': 'g', 'Ї': 'i',
+    'Є': 'e', '1': '1', '2': '2', '3': '3'
+}
 
-def process_folder(folder_path):
-    known_extensions = {
-        'images': ('JPEG', 'PNG', 'JPG', 'SVG'),
-        'video': ('AVI', 'MP4', 'MOV', 'MKV'),
-        'documents': ('DOC', 'DOCX', 'TXT', 'PDF', 'XLSX', 'PPTX'),
-        'audio': ('MP3', 'OGG', 'WAV', 'AMR'),
-        'archives': ('ZIP', 'GZ', 'TAR')
-    }
-    unknown_extensions = set()
 
-    for root, dirs, files in os.walk(folder_path):
-        for filename in files:
-            file_path = os.path.join(root, filename)
-            file_extension = filename.split('.')[-1].upper()
+def transliterate(word):
+    return ''.join(TRANSLATE_DICT.get(c, c) for c in word)
 
-            if file_extension in known_extensions['images']:
-                destination = 'images'
-            elif file_extension in known_extensions['video']:
-                destination = 'video'
-            elif file_extension in known_extensions['documents']:
-                destination = 'documents'
-            elif file_extension in known_extensions['audio']:
-                destination = 'audio'
-            elif file_extension in known_extensions['archives']:
-                destination = 'archives'
-                unpacked_folder = os.path.splitext(file_path)[0]
-                shutil.unpack_archive(file_path, unpacked_folder)
-                process_folder(unpacked_folder)
+
+def get_category(ext):
+    for category, extensions in CATEGORIES.items():
+        if ext in extensions and ext not in IGNORE:
+            return category
+    return 'OTHER'
+
+
+def main():
+    sorted_path = sys.argv[1]
+
+    files = os.listdir(sorted_path)
+
+    ext_set = set()
+    unknown_ext_set = set()
+
+    for file in files:
+        if os.path.isfile(os.path.join(sorted_path, file)):
+            ext = file.split('.')[-1]
+            if ext in str(CATEGORIES.values()):
+                ext_set.add(ext)
             else:
-                destination = 'unknown'
-                unknown_extensions.add(file_extension)
+                unknown_ext_set.add(ext)
 
-            if destination != 'unknown':
-                destination_folder = os.path.join(folder_path, destination)
-                os.makedirs(destination_folder, exist_ok=True)
-                new_filename = normalize(filename)
-                new_file_path = os.path.join(destination_folder, new_filename)
-                shutil.move(file_path, new_file_path)
+            normalized_name = transliterate(file)
+            os.rename(os.path.join(sorted_path, file), os.path.join(sorted_path, normalized_name))
 
-    return known_extensions, unknown_extensions
+    for category in CATEGORIES:
+        if category not in os.listdir(sorted_path):
+            os.mkdir(os.path.join(sorted_path, category))
 
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("Please provide the folder path as an argument.")
-    else:
-        folder_path = sys.argv[1]
-        known_extensions, unknown_extensions = process_folder(folder_path)
+    for file in os.listdir(sorted_path):
+        if os.path.isfile(os.path.join(sorted_path, file)):
+            ext = file.split('.')[-1]
+            category = get_category(ext)
+            target_folder = os.path.join(sorted_path, category)
+            
+            if category == 'ARCHIVE':
+                shutil.unpack_archive(os.path.join(sorted_path, file), target_folder)
+                os.remove(os.path.join(sorted_path, file))
+            else:
+                shutil.move(os.path.join(sorted_path, file), target_folder)
 
-        print("Known extensions:")
-        for category, extensions in known_extensions.items():
-            print(f"{category}: {', '.join(extensions)}")
+    # Remove empty directories
+    for root_folder, dirs, _ in os.walk(sorted_path, topdown=False):
+        for dir in dirs:
+            dir_path = os.path.join(root_folder, dir)
+            if not os.listdir(dir_path):
+                os.rmdir(dir_path)
 
-        print("\nUnknown extensions:")
-        print(', '.join(unknown_extensions))
-# test
+    for folder in os.listdir(sorted_path):
+        folder_path = os.path.join(sorted_path, folder)
+        print('{:>50} - {:<50} '.format('Folder', folder))
+        print('{:^100}'.format('-' * 99))
+        for file in os.listdir(folder_path):
+            print('{:^5} {:<95} '.format('', file))
+        print('\n')
+        print('{:^100}'.format('-' * 99))
+
+    print('{:^100}'.format('*' * 100))
+    print(f"Founded file's with known extension: {ext_set}")
+    print(f"Founded file's with unknown extension: {unknown_ext_set}")
+    print('{:^100}'.format('*' * 100))
+
+
+if __name__ == "__main__":
+    main()
