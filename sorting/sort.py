@@ -38,7 +38,15 @@ def get_category(ext):
 
 
 def main():
+    if len(sys.argv) < 2:
+        print("Please provide a directory path as an argument.")
+        return
+
     sorted_path = sys.argv[1]
+
+    if not os.path.exists(sorted_path) or not os.path.isdir(sorted_path):
+        print("Invalid directory path.")
+        return
 
     files = os.listdir(sorted_path)
 
@@ -48,7 +56,7 @@ def main():
     for file in files:
         if os.path.isfile(os.path.join(sorted_path, file)):
             ext = file.split('.')[-1]
-            if ext in str(CATEGORIES.values()):
+            if ext in [item for sublist in CATEGORIES.values() for item in sublist]:
                 ext_set.add(ext)
             else:
                 unknown_ext_set.add(ext)
@@ -57,20 +65,22 @@ def main():
             os.rename(os.path.join(sorted_path, file), os.path.join(sorted_path, normalized_name))
 
     for category in CATEGORIES:
+        category_folder = os.path.join(sorted_path, category)
         if category not in os.listdir(sorted_path):
-            os.mkdir(os.path.join(sorted_path, category))
+            os.mkdir(category_folder)
 
     for file in os.listdir(sorted_path):
-        if os.path.isfile(os.path.join(sorted_path, file)):
+        file_path = os.path.join(sorted_path, file)
+        if os.path.isfile(file_path):
             ext = file.split('.')[-1]
             category = get_category(ext)
             target_folder = os.path.join(sorted_path, category)
-            
+
             if category == 'ARCHIVE':
-                shutil.unpack_archive(os.path.join(sorted_path, file), target_folder)
-                os.remove(os.path.join(sorted_path, file))
+                shutil.unpack_archive(file_path, target_folder)
+                os.remove(file_path)
             else:
-                shutil.move(os.path.join(sorted_path, file), target_folder)
+                shutil.move(file_path, target_folder)
 
     # Remove empty directories
     for root_folder, dirs, _ in os.walk(sorted_path, topdown=False):
