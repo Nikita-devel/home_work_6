@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import uuid
 
 CATEGORIES = {
     'IMAGE': ['jpeg', 'png', 'jpg', 'svg'],
@@ -37,60 +38,56 @@ def get_category(ext):
     return 'OTHER'
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Please provide a directory path as an argument.")
-        return
-
-    sorted_path = sys.argv[1]
-
-    if not os.path.exists(sorted_path) or not os.path.isdir(sorted_path):
-        print("Invalid directory path.")
-        return
-
-    files = os.listdir(sorted_path)
-
+def sort_files_in_directory(directory):
     ext_set = set()
     unknown_ext_set = set()
 
-    for file in files:
-        if os.path.isfile(os.path.join(sorted_path, file)):
-            ext = file.split('.')[-1]
-            if ext in [item for sublist in CATEGORIES.values() for item in sublist]:
-                ext_set.add(ext)
-            else:
-                unknown_ext_set.add(ext)
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if os.path.isfile(file_path):
+                ext = file.split('.')[-1]
+                if ext in [item for sublist in CATEGORIES.values() for item in sublist]:
+                    ext_set.add(ext)
+                else:
+                    unknown_ext_set.add(ext)
 
-            normalized_name = transliterate(file)
-            os.rename(os.path.join(sorted_path, file), os.path.join(sorted_path, normalized_name))
+                normalized_name = transliterate(file)
+                os.rename(file_path, os.path.join(root, normalized_name))
 
     for category in CATEGORIES:
-        category_folder = os.path.join(sorted_path, category)
-        if category not in os.listdir(sorted_path):
+        category_folder = os.path.join(directory, category)
+        if category not in os.listdir(directory):
             os.mkdir(category_folder)
 
-    for file in os.listdir(sorted_path):
-        file_path = os.path.join(sorted_path, file)
-        if os.path.isfile(file_path):
-            ext = file.split('.')[-1]
-            category = get_category(ext)
-            target_folder = os.path.join(sorted_path, category)
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if os.path.isfile(file_path):
+                ext = file.split('.')[-1]
+                category = get_category(ext)
+                target_folder = os.path.join(directory, category)
 
-            if category == 'ARCHIVE':
-                shutil.unpack_archive(file_path, target_folder)
-                os.remove(file_path)
-            else:
-                shutil.move(file_path, target_folder)
+                if category == 'ARCHIVE':
+                    shutil.unpack_archive(file_path, target_folder)
+                    os.remove(file_path)
+                else:
+                    if os.path.exists(os.path.join(target_folder, file)):
+                        base_name = os.path.splitext(file)[0]
+                        unique_name = base_name + '_' + str(uuid.uuid4())[:8] + os.path.splitext(file)[1]
+                        shutil.move(file_path, os.path.join(target_folder, unique_name))
+                    else:
+                        shutil.move(file_path, target_folder)
 
     # Remove empty directories
-    for root_folder, dirs, _ in os.walk(sorted_path, topdown=False):
+    for root_folder, dirs, _ in os.walk(directory, topdown=False):
         for dir in dirs:
             dir_path = os.path.join(root_folder, dir)
             if not os.listdir(dir_path):
                 os.rmdir(dir_path)
 
-    for folder in os.listdir(sorted_path):
-        folder_path = os.path.join(sorted_path, folder)
+    for folder in os.listdir(directory):
+        folder_path = os.path.join(directory, folder)
         print('{:>50} - {:<50} '.format('Folder', folder))
         print('{:^100}'.format('-' * 99))
         for file in os.listdir(folder_path):
@@ -102,6 +99,20 @@ def main():
     print(f"Founded file's with known extension: {ext_set}")
     print(f"Founded file's with unknown extension: {unknown_ext_set}")
     print('{:^100}'.format('*' * 100))
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Please provide a directory path as an argument.")
+        return
+
+    sorted_path = sys.argv[1]
+
+    if not os.path.exists(sorted_path) or not os.path.isdir(sorted_path):
+        print("Invalid directory path.")
+        return
+
+    sort_files_in_directory(sorted_path)
 
 
 if __name__ == "__main__":
