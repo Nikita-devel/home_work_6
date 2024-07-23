@@ -1,119 +1,149 @@
 import os
-import sys
 import shutil
+import zipfile
+import tarfile
+import re
 import uuid
+from pathlib import Path
 
-CATEGORIES = {
-    'IMAGE': ['jpeg', 'png', 'jpg', 'svg'],
-    'VIDEO': ['avt', 'mp4', 'mov', 'mkv'],
-    'DOCS': ['doc', 'docx', 'txt', 'pdf', 'xlsx', 'pptx', 'rtf'],
-    'MUSIC': ['mp3', 'ogg', 'wav', 'amr'],
-    'ARCHIVE': ['zip', 'gz', 'tar', '7z'],
-    'OTHER': []
-}
-IGNORE = ['.DS_Store']
-
-TRANSLATE_DICT = {
-    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
-    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'i', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
-    'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h',
-    'ц': 'c', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e',
-    'ю': 'u', 'я': 'ya', 'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'YO',
-    'Ж': 'ZH', 'З': 'Z', 'И': 'I', 'Й': 'I', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N',
-    'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H',
-    'Ц': 'C', 'Ч': 'CH', 'Ш': 'SH', 'Щ': 'SCH', 'Ъ': '', 'Ы': 'y', 'Ь': '', 'Э': 'E',
-    'Ю': 'U', 'Я': 'YA', 'ґ': '', 'ї': '', 'є': '', 'Ґ': 'g', 'Ї': 'i',
-    'Є': 'e', '1': '1', '2': '2', '3': '3'
+# Транслітерація кирилиці на латиницю
+TRANS = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d",
+    "е": "e", "є": "ie", "ж": "zh", "з": "z", "и": "y",
+    "і": "i", "ї": "i", "й": "i", "к": "k", "л": "l",
+    "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
+    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh",
+    "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch", "ю": "iu",
+    "я": "ia"
 }
 
+def normalize(name: str) -> str:
+    transliterated = ''.join(TRANS.get(ch.lower(), ch) for ch in name)
+    normalized = re.sub(r'[^a-zA-Z0-9]', '_', transliterated)
+    return normalized
 
-def transliterate(word):
-    return ''.join(TRANSLATE_DICT.get(c, c) for c in word)
+# Категорії файлів
+FILE_TYPES = {
+    'text': ['.txt', '.doc', '.docx', '.pdf', '.odt', '.rtf', '.md', '.tex', '.wps'],
+    'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.tiff', '.psd', '.ai', '.ico'],
+    'audio': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.aiff'],
+    'video': ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.vob'],
+    'archives': ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso'],
+    'databases': ['.sql', '.mdb', '.accdb', '.sqlite', '.db', '.dbf', '.myd', '.frm'],
+    'software': ['.exe', '.msi', '.apk', '.dmg', '.iso', '.bin', '.jar', '.deb', '.rpm'],
+    'scripts': ['.py', '.js', '.html', '.css', '.php', '.java', '.cpp', '.cs', '.rb', '.sh', '.pl'],
+    'system': ['.dll', '.sys', '.ini', '.log', '.bat', '.cfg', '.reg', '.efi']
+}
 
-
-def get_category(ext):
-    for category, extensions in CATEGORIES.items():
-        if ext in extensions and ext not in IGNORE:
+def categorize_file(file_name: str) -> str:
+    ext = os.path.splitext(file_name)[1].lower()
+    for category, extensions in FILE_TYPES.items():
+        if ext in extensions:
             return category
-    return 'OTHER'
+    return 'other'
 
+def handle_archive(file_path: str, target_dir: str):
+    ext = os.path.splitext(file_path)[1].lower()
+    try:
+        if ext == '.zip':
+            with zipfile.ZipFile(file_path, 'r') as archive:
+                archive.extractall(target_dir)
+        elif ext in ['.tar', '.gz', '.bz2', '.xz']:
+            with tarfile.open(file_path, 'r:*') as archive:
+                archive.extractall(target_dir)
+        os.remove(file_path)
+    except (zipfile.BadZipFile, tarfile.TarError):
+        print(f"Failed to unpack the archive: {file_path}")
 
-def sort_files_in_directory(directory):
-    ext_set = set()
-    unknown_ext_set = set()
+def ensure_unique_path(path: str) -> str:
+    if not os.path.exists(path):
+        return path
+    
+    base, ext = os.path.splitext(path)
+    unique_path = f"{base}_{uuid.uuid4().hex}{ext}"
+    return ensure_unique_path(unique_path)
 
-    for root, dirs, files in os.walk(directory):
+def process_folder(folder_path: str):
+    sorted_files = {
+        'text': [],
+        'images': [],
+        'audio': [],
+        'video': [],
+        'archives': [],
+        'databases': [],
+        'software': [],
+        'scripts': [],
+        'system': [],
+        'other': []
+    }
+    known_extensions = set()
+    unknown_extensions = set()
+
+    # Створюємо папки для кожної категорії
+    for category in sorted_files.keys():
+        category_dir = os.path.join(folder_path, category)
+        os.makedirs(category_dir, exist_ok=True)
+
+    for root, dirs, files in os.walk(folder_path, topdown=False):
         for file in files:
             file_path = os.path.join(root, file)
-            if os.path.isfile(file_path):
-                ext = file.split('.')[-1]
-                if ext in [item for sublist in CATEGORIES.values() for item in sublist]:
-                    ext_set.add(ext)
-                else:
-                    unknown_ext_set.add(ext)
+            category = categorize_file(file)
+            sorted_files[category].append(file_path)
 
-                normalized_name = transliterate(file)
-                os.rename(file_path, os.path.join(root, normalized_name))
+            ext = os.path.splitext(file)[1].lower()
+            if category == 'other':
+                unknown_extensions.add(ext)
+            else:
+                known_extensions.add(ext)
 
-    for category in CATEGORIES:
-        category_folder = os.path.join(directory, category)
-        if category not in os.listdir(directory):
-            os.mkdir(category_folder)
+            new_name = normalize(os.path.splitext(file)[0]) + ext
+            new_path = os.path.join(folder_path, category, new_name)
+            new_path = ensure_unique_path(new_path)
+            shutil.move(file_path, new_path)
 
-    for root, dirs, files in os.walk(directory):
+            if category == 'archives':
+                target_dir = os.path.join(folder_path, 'archives', os.path.splitext(file)[0])
+                os.makedirs(target_dir, exist_ok=True)
+                handle_archive(new_path, target_dir)
+
+    remove_empty_dirs(folder_path)
+
+    print("\nSorting completed. Results:")
+    for category, files in sorted_files.items():
+        print(f"{category.capitalize()}:")
         for file in files:
-            file_path = os.path.join(root, file)
-            if os.path.isfile(file_path):
-                ext = file.split('.')[-1]
-                category = get_category(ext)
-                target_folder = os.path.join(directory, category)
+            print(f"  - {file}")
 
-                if category == 'ARCHIVE':
-                    shutil.unpack_archive(file_path, target_folder)
-                    os.remove(file_path)
-                else:
-                    if os.path.exists(os.path.join(target_folder, file)):
-                        base_name = os.path.splitext(file)[0]
-                        unique_name = base_name + '_' + str(uuid.uuid4())[:8] + os.path.splitext(file)[1]
-                        shutil.move(file_path, os.path.join(target_folder, unique_name))
-                    else:
-                        shutil.move(file_path, target_folder)
+    print("\nKnown extensions:")
+    for ext in known_extensions:
+        print(f"  - {ext}")
 
-    # Remove empty directories
-    for root_folder, dirs, _ in os.walk(directory, topdown=False):
+    print("\nUnknown extensions:")
+    for ext in unknown_extensions:
+        print(f"  - {ext}")
+
+def remove_empty_dirs(folder_path: str):
+    for root, dirs, files in os.walk(folder_path, topdown=False):
         for dir in dirs:
-            dir_path = os.path.join(root_folder, dir)
-            if not os.listdir(dir_path):
+            dir_path = os.path.join(root, dir)
+            try:
                 os.rmdir(dir_path)
-
-    for folder in os.listdir(directory):
-        folder_path = os.path.join(directory, folder)
-        print('{:>50} - {:<50} '.format('Folder', folder))
-        print('{:^100}'.format('-' * 99))
-        for file in os.listdir(folder_path):
-            print('{:^5} {:<95} '.format('', file))
-        print('\n')
-        print('{:^100}'.format('-' * 99))
-
-    print('{:^100}'.format('*' * 100))
-    print(f"Founded file's with known extension: {ext_set}")
-    print(f"Founded file's with unknown extension: {unknown_ext_set}")
-    print('{:^100}'.format('*' * 100))
-
+                print(f"Removed empty directory: {dir_path}")
+            except OSError:
+                pass
 
 def main():
-    if len(sys.argv) < 2:
-        print("Please provide a directory path as an argument.")
-        return
+    while True:
+        folder_path = input("Enter the path to the folder to sort (or type 'exit' to quit): ").strip()
+        if folder_path.lower() == 'exit':
+            print("Exiting the program.")
+            break
+        
+        if not os.path.isdir(folder_path):
+            print(f"The path '{folder_path}' is not a valid directory. Please try again.")
+            continue
 
-    sorted_path = sys.argv[1]
-
-    if not os.path.exists(sorted_path) or not os.path.isdir(sorted_path):
-        print("Invalid directory path.")
-        return
-
-    sort_files_in_directory(sorted_path)
-
+        process_folder(folder_path)
 
 if __name__ == "__main__":
     main()
